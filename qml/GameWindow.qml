@@ -454,8 +454,8 @@ Item {
                 height: 22
                 anchors.verticalCenter: parent.verticalCenter
 
-                readonly property real from: -9
-                readonly property real to: 9
+                readonly property real from: -18
+                readonly property real to: 18
                 property real value: st.sensitivity_db || 0
 
                 function apply(x) {

@@ -13,6 +13,7 @@ PluginPage {
     property int rabbitCount: 4
     property real sensitivity: 0
     property real pullSeconds: 8
+    property real rollbackSpeed: 0.3
     property string micInfo: ""
 
     Component.onCompleted: refresh()
@@ -29,6 +30,7 @@ PluginPage {
         rabbitCount = s.rabbit_count
         sensitivity = s.sensitivity_db
         pullSeconds = s.pull_seconds
+        rollbackSpeed = s.rollback_speed
         micInfo = backend.micStatus()
     }
 
@@ -104,15 +106,31 @@ PluginPage {
         Layout.fillWidth: true
         icon.name: "ic_fluent_settings_20_regular"
         title: qsTr("灵敏度微调：%1 dB").arg(root.sensitivity > 0 ? "+" + root.sensitivity.toFixed(0) : root.sensitivity.toFixed(0))
-        description: qsTr("负数更容易达标，正数更严格。底噪是自动跟的，这里只是微调。")
+        description: qsTr("负数更容易达标，正数更严格。底噪是自动跟的，这里只是微调；还是拔不动就继续往左拉到 -18。")
 
         Slider {
             Layout.fillWidth: true
-            from: -9
-            to: 9
+            from: -18
+            to: 18
             stepSize: 1
             value: root.sensitivity
             onMoved: backend.setSensitivity(value)
+        }
+    }
+
+    SettingCard {
+        Layout.fillWidth: true
+        icon.name: "ic_fluent_arrow_undo_20_regular"
+        title: qsTr("回落速度：%1%").arg(Math.round(root.rollbackSpeed * 100))
+        description: qsTr("声音断了以后，已经拔出来的进度往回掉的快慢；0% 就是不回掉，松口气也不会吃亏。")
+
+        Slider {
+            Layout.fillWidth: true
+            from: 0
+            to: 1
+            stepSize: 0.05
+            value: root.rollbackSpeed
+            onMoved: backend.setRollbackSpeed(value)
         }
     }
 

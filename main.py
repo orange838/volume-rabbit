@@ -30,6 +30,7 @@ class VolRabbitConfig(ConfigBaseModel):
     pull_seconds: float = 8.0
     morning_db: float = 18.0
     quiet_db: float = 3.0
+    rollback_speed: float = 0.3
     window_width: int = 1280
     window_height: int = 720
 
@@ -80,6 +81,10 @@ class GameBridge(QObject):
     def setPullSeconds(self, value: float) -> None:
         self._plugin.set_pull_seconds(value)
 
+    @Slot(float)
+    def setRollbackSpeed(self, value: float) -> None:
+        self._plugin.set_rollback_speed(value)
+
     @Slot()
     def toggleFullscreen(self) -> None:
         self._plugin.toggle_fullscreen()
@@ -117,6 +122,13 @@ class Plugin(CW2Plugin):
         model = self.api.config.get_plugin_model(self.pid)
         if model is not None:
             self._config = model
+        # 老版本默认「要比底噪高 18 dB」，笔记本内置麦基本够不到，
+        # 导致灵敏度拉到最左还是拔不动；这里把历史配置里的大值收回到 10 dB。
+        if self._config.morning_db > 14.0:
+            logger.info(
+                f"[早读萝卜] 早读余量 {self._config.morning_db:.0f} dB 太苛刻，调整为 10 dB"
+            )
+            self._config.morning_db = 10.0
         self._apply_params()
 
         self.api.ui.register_settings_page(
@@ -164,6 +176,7 @@ class Plugin(CW2Plugin):
             morning_db=self._config.morning_db,
             quiet_db=self._config.quiet_db,
             pull_seconds=self._config.pull_seconds,
+            rollback_speed=self._config.rollback_speed,
         ))
 
     def _save(self) -> None:
@@ -230,13 +243,19 @@ class Plugin(CW2Plugin):
 
     @Slot(float)
     def set_sensitivity(self, value: float) -> None:
-        self._config.sensitivity_db = max(-9.0, min(9.0, float(value)))
+        self._config.sensitivity_db = max(-18.0, min(18.0, float(value)))
         self._apply_params()
         self._save()
 
     @Slot(float)
     def set_pull_seconds(self, value: float) -> None:
         self._config.pull_seconds = max(2.0, min(60.0, float(value)))
+        self._apply_params()
+        self._save()
+
+    @Slot(float)
+    def set_rollback_speed(self, value: float) -> None:
+        self._config.rollback_speed = max(0.0, min(1.0, float(value)))
         self._apply_params()
         self._save()
 
@@ -334,6 +353,10 @@ class Plugin(CW2Plugin):
     def setPullSeconds(self, value: float) -> None:
         self.set_pull_seconds(value)
 
+    @Slot(float)
+    def setRollbackSpeed(self, value: float) -> None:
+        self.set_rollback_speed(value)
+
     @Slot(result="QVariantMap")
     def getSettings(self) -> dict:
         return {
@@ -343,6 +366,7 @@ class Plugin(CW2Plugin):
             "pull_seconds": self._config.pull_seconds,
             "morning_db": self._config.morning_db,
             "quiet_db": self._config.quiet_db,
+            "rollback_speed": self._config.rollback_speed,
         }
 
     @Slot(str, result="QVariantMap")
