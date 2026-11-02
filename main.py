@@ -22,6 +22,9 @@ from _vr.engine import MODE_MORNING, MODE_QUIET, Engine, Params
 
 PLUGIN_ID = "org.cslblog.volumerabbit"
 
+# 设置页「测一下麦克风」最多占用多久，到点自动松手
+PREVIEW_SECONDS = 12
+
 
 class VolRabbitConfig(ConfigBaseModel):
     mode: str = MODE_MORNING
@@ -100,6 +103,7 @@ class GameBridge(QObject):
 
 class Plugin(CW2Plugin):
     configChanged = Signal()
+    previewChanged = Signal()
 
     def __init__(self, api: PluginAPI) -> None:
         super().__init__(api)
@@ -111,6 +115,11 @@ class Plugin(CW2Plugin):
         self._restore_quit_on_close = False
         self._last_tick = time.monotonic()
         self._last_state_emit = 0.0
+        self._preview = False
+        self._preview_timer = QTimer(self)
+        self._preview_timer.setSingleShot(True)
+        self._preview_timer.setInterval(PREVIEW_SECONDS * 1000)
+        self._preview_timer.timeout.connect(self._end_preview)
 
         self.meter.levelChanged.connect(self._on_level)
         self.meter.failed.connect(self._on_mic_failed)
@@ -149,6 +158,8 @@ class Plugin(CW2Plugin):
         logger.info("[早读萝卜] 插件已加载")
 
     def on_unload(self) -> None:
+        self._preview = False
+        self._preview_timer.stop()
         self.meter.stop()
         try:
             self.api.ui.unregister_plugin_shortcuts(self.pid)
@@ -194,6 +205,47 @@ class Plugin(CW2Plugin):
         data["mic_running"] = self.meter.running
         return data
 
+    # ------------------------------------------------------------ 麦克风占用
+    def _mic_wanted(self) -> bool:
+        """只有在真正需要时才算「该开着麦」。
+
+        - 试听进行中
+        - 游戏在跑（不是 idle）
+        - 大窗口可见（要画电平条）
+        其余情况一律松手，避免一直占着麦克风不放。
+        """
+        if self._preview:
+            return True
+        if self._engine.phase != "idle":
+            return True
+        view = self._view
+        try:
+            return view is not None and view.isVisible()
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _sync_mic(self) -> None:
+        if self._mic_wanted():
+            if not self.meter.running:
+                self.meter.start()
+            return
+        was_running = self.meter.running
+        # stop() 同时会停掉失败重试，别让它在后台一直戳设备
+        self.meter.stop()
+        if was_running:
+            logger.info("[早读萝卜] 不再需要麦克风，已释放")
+
+    @Slot()
+    def _end_preview(self) -> None:
+        self._preview_timer.stop()
+        if not self._preview:
+            return
+        self._preview = False
+        self._sync_mic()
+        self.previewChanged.emit()
+        self._bridge.stateChanged.emit()
+        logger.info("[早读萝卜] 试听结束，麦克风已释放")
+
     # ------------------------------------------------------------ 音频
     def _on_level(self, rms: float, dbfs: float) -> None:
         now = time.monotonic()
@@ -217,14 +269,16 @@ class Plugin(CW2Plugin):
             self.pause_game()
 
     def start_game(self) -> None:
-        if not self.meter.running:
-            self.meter.start()
+        self._preview = False
+        self._preview_timer.stop()
         self._last_tick = time.monotonic()
         self._engine.start()
+        self._sync_mic()
         self._bridge.stateChanged.emit()
 
     def pause_game(self) -> None:
         self._engine.pause()
+        self._sync_mic()
         self._bridge.stateChanged.emit()
 
     def reset_game(self) -> None:
@@ -266,8 +320,7 @@ class Plugin(CW2Plugin):
             self._view.show()
             self._view.raise_()
             self._view.requestActivate()
-            if not self.meter.running:
-                self.meter.start()
+            self._sync_mic()
             return
 
         qml_path = Path(__file__).resolve().parent / "qml" / "GameWindow.qml"
@@ -287,17 +340,18 @@ class Plugin(CW2Plugin):
 
         self._view = view
         self._last_tick = time.monotonic()
-        if not self.meter.running:
-            self.meter.start()
+        self._sync_mic()
         logger.info("[早读萝卜] 大窗口已打开")
 
     @Slot()
     def _on_window_closing(self) -> None:
         # 注意：这里绝不能销毁 view。窗口的 closing 信号是在它自己的关闭流程里发出的，
         # 此时把 Python 引用置 None 会立即析构 QQuickView，导致进程直接崩溃。
-        self.meter.stop()
+        self._preview = False
+        self._preview_timer.stop()
         self._engine.pause()
-        logger.info("[早读萝卜] 大窗口被关闭（标题栏）")
+        self._sync_mic()
+        logger.info("[早读萝卜] 大窗口被关闭（标题栏），麦克风已释放")
 
     def _guard_app_quit(self) -> None:
         """大窗口关闭时不要把整个 CW2 带走。
@@ -324,9 +378,11 @@ class Plugin(CW2Plugin):
         # 在 CW2 主窗口收进托盘时会把整个 CW2 带走。
         if self._view is not None:
             self._view.hide()
-        self.meter.stop()
+        self._preview = False
+        self._preview_timer.stop()
         self._engine.pause()
-        logger.info("[早读萝卜] 大窗口已隐藏（保留实例，可随时重开）")
+        self._sync_mic()
+        logger.info("[早读萝卜] 大窗口已隐藏（保留实例，可随时重开），麦克风已释放")
 
     def toggle_fullscreen(self) -> None:
         if self._view is None:
@@ -395,10 +451,20 @@ class Plugin(CW2Plugin):
 
     @Slot()
     def startPreview(self) -> None:
-        """设置页里点「试听电平」，启动麦克风但不进游戏。"""
-        if not self.meter.running:
-            self.meter.start()
+        """设置页里点「测一下麦克风」：只占用 PREVIEW_SECONDS 秒，到点自动释放。"""
+        self._preview = True
+        self._sync_mic()
+        self._preview_timer.start()
+        self.previewChanged.emit()
+        logger.info(f"[早读萝卜] 试听开始，{PREVIEW_SECONDS} 秒后自动释放麦克风")
 
     @Slot()
     def stopMic(self) -> None:
-        self.meter.stop()
+        self._preview = False
+        self._preview_timer.stop()
+        self._sync_mic()
+        self.previewChanged.emit()
+
+    @Slot(result=bool)
+    def isPreviewing(self) -> bool:
+        return self._preview

@@ -15,12 +15,31 @@ PluginPage {
     property real pullSeconds: 8
     property real rollbackSpeed: 0.3
     property string micInfo: ""
+    property bool previewing: false
 
     Component.onCompleted: refresh()
 
     Connections {
         target: backend
         function onConfigChanged() { root.refresh() }
+        function onPreviewChanged() {
+            root.previewing = backend.isPreviewing()
+            root.micInfo = backend.micStatus()
+        }
+    }
+
+    // 试听到点会自动释放，这里轮询一次状态，保证按钮文案也能自己复位
+    Timer {
+        interval: 500
+        repeat: true
+        running: root.previewing
+        onTriggered: {
+            var live = backend.isPreviewing()
+            if (live !== root.previewing) {
+                root.previewing = live
+                root.micInfo = backend.micStatus()
+            }
+        }
     }
 
     function refresh() {
@@ -32,13 +51,14 @@ PluginPage {
         pullSeconds = s.pull_seconds
         rollbackSpeed = s.rollback_speed
         micInfo = backend.micStatus()
+        previewing = backend.isPreviewing()
     }
 
     SettingCard {
         Layout.fillWidth: true
         icon.name: "ic_fluent_play_20_regular"
         title: qsTr("打开大屏")
-        description: qsTr("在独立窗口里显示萝卜地，可以全屏投影。建议先在教室里点开，看一眼右下角电平条。")
+        description: qsTr("在独立窗口里显示萝卜地，可以全屏投影。建议先在教室里点开，看一眼右下角电平条。麦克风只在需要时占用：窗口关掉、游戏暂停就会松手。")
 
         RowLayout {
             spacing: 8
@@ -48,9 +68,14 @@ PluginPage {
                 onClicked: backend.openWindow()
             }
             Button {
-                text: qsTr("测一下麦克风")
+                text: root.previewing ? qsTr("停止试听") : qsTr("测一下麦克风")
                 onClicked: {
-                    backend.startPreview()
+                    if (root.previewing) {
+                        backend.stopMic()
+                    } else {
+                        backend.startPreview()
+                    }
+                    root.previewing = backend.isPreviewing()
                     root.micInfo = backend.micStatus()
                 }
             }

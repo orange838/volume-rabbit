@@ -21,6 +21,8 @@ class AudioMeter(QObject):
     failed = Signal(str)
 
     INTERVAL_MS = 60
+    # 打不开麦克风时最多重试几次，避免一直戳设备
+    RETRY_LIMIT = 5
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -29,6 +31,7 @@ class AudioMeter(QObject):
         self._device_name = ""
         self._running = False
         self._last_error = ""
+        self._retry_left = self.RETRY_LIMIT
 
         self._timer = QTimer(self)
         self._timer.setInterval(self.INTERVAL_MS)
@@ -37,7 +40,7 @@ class AudioMeter(QObject):
         self._retry = QTimer(self)
         self._retry.setSingleShot(True)
         self._retry.setInterval(3000)
-        self._retry.timeout.connect(self.start)
+        self._retry.timeout.connect(self._retry_start)
 
     # ---------------------------------------------------------- 生命周期
     @property
@@ -53,6 +56,13 @@ class AudioMeter(QObject):
         return self._last_error
 
     def start(self) -> bool:
+        self._retry_left = self.RETRY_LIMIT
+        return self._start()
+
+    def _retry_start(self) -> None:
+        self._start()
+
+    def _start(self) -> bool:
         self.stop(keep_retry=False)
         try:
             device = QMediaDevices.defaultAudioInput()
@@ -108,7 +118,9 @@ class AudioMeter(QObject):
         logger.warning(f"[早读萝卜] {message}")
         self.failed.emit(message)
         self.stop(keep_retry=True)
-        self._retry.start()
+        if self._retry_left > 0:
+            self._retry_left -= 1
+            self._retry.start()
 
     # ---------------------------------------------------------- 采样
     def _poll(self) -> None:
