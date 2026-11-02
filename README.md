@@ -19,16 +19,20 @@
 
 ### 从插件广场
 
-Class Widgets 2 → 设置 → 插件 → 插件广场，搜索「早读萝卜」安装。
+Class Widgets 2 → 设置 → 插件 → 点开「插件广场」→ 搜索「早读萝卜」→ 点「下载」，装好后回到插件列表把开关拨到启用。
 
 ### 手动安装
 
-把插件目录放到数据目录下的 `plugins\org.cslblog.volumerabbit\`：
+1. 到 [Releases](https://github.com/orange838/volume-rabbit/releases) 下载 `org.cslblog.volumerabbit.cwplugin`。
+2. 打开 Class Widgets 2 → **设置 → 插件**，点「您的插件」右边的 **「+ 导入」**，选中刚下载的文件。
+3. 列表里出现「早读萝卜」后，把右侧开关拨到**启用**。
 
-- 便携版：`<安装目录>\data\plugins\`
-- 普通安装：`%LOCALAPPDATA%\Class_Widgets_2\plugins\`
+不想用导入按钮，也可以直接放目录（放完重启 CW2）：
 
-然后在设置 → 插件里启用「早读萝卜」。
+- 便携版：`<安装目录>\data\plugins\org.cslblog.volumerabbit\`
+- 普通安装：`%LOCALAPPDATA%\Class_Widgets_2\plugins\org.cslblog.volumerabbit\`
+
+放进去的必须是**插件目录本身**（里面直接能看到 `cwplugin.json` 和 `main.py`），不要再套一层同名文件夹，否则设置页里不会出现这一项。
 
 ## 用法
 
