@@ -25,13 +25,13 @@ jobs:
 
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: 安装 Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -106,13 +106,12 @@ jobs:
           echo "请在仓库 Settings → Secrets and variables → Actions 中添加 CWPT_TOKEN"
 
       - name: 创建 GitHub Release 并上传发布包
-        uses: softprops/action-gh-release@v2
-        with:
-          name: 早读萝卜 v${{ env.VERSION }}
-          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
-          draft: false
-          prerelease: false
-          generate_release_notes: true
-          files: |
-            dist/*.cwplugin
-            dist/*.zip
+        # 直接用 gh CLI，避免第三方 action 绑定旧版 Node 运行时
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.event.inputs.tag || github.ref_name }}" \
+            dist/*.cwplugin dist/*.zip \
+            --title "早读萝卜 v${VERSION}" \
+            --generate-notes \
+            --verify-tag
