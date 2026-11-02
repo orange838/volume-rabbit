@@ -1,0 +1,15 @@
+# 打包产物
+dist/
+*.cwplugin
+
+# 开发调试脚本与截图（不进包、不进仓库）
+_dev/
+__pycache__/
+*.pyc
+*.pyo
+
+# 编辑器与系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,12 @@
+{
+  "id": "org.cslblog.volumerabbit",
+  "name": "早读萝卜",
+  "version": "0.1.0",
+  "api_version": ">=0.4.2",
+  "entry": "main.py",
+  "author": "cslblog",
+  "description": "麦克风音量驱动的兔子拔萝卜：早读模式声音越大拔得越快，安静模式越安静拔得越快；兔子数量、灵敏度均可配置",
+  "readme": "README.md",
+  "icon": "icon.png",
+  "url": "https://github.com/orange838/volume-rabbit"
+}
